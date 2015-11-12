@@ -1,0 +1,166 @@
+<?php
+/**
+ * @file
+ * Handles main functionality for comerce shipping by weight module.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_shipping_by_weight_menu() {
+  $items = array();
+
+  $items['admin/commerce/config/shipping/methods/commerce-shipping-by-weight/edit'] = array(
+    'title' => 'Edit',
+    'description' => 'Configure the commerce shipping by weight shipping method.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_shipping_by_weight_settings_form'),
+    'access arguments' => array('administer shipping'),
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 0,
+  );
+
+  return $items;
+}
+
+function commerce_shipping_by_weight_settings_form($form,&$form_state){
+    $form['commerce_shipping_by_weight_base_rate'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Shiping Base Rate(per kg)'),
+      '#default_value' => variable_get('commerce_shipping_by_weight_base_rate'),
+      '#required' => TRUE,
+    );
+
+    $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save configuration'),
+  );
+    return $form;
+}
+
+/**
+ * Implements hook_form_validate().
+ */
+function commerce_shipping_by_weight_settings_form_validate($form, &$form_state) {
+
+  $values = $form_state['values'];
+
+  if (!is_numeric($values['commerce_shipping_by_weight_base_rate']) || $values['commerce_shipping_by_weight_base_rate'] <= 0) {
+    form_set_error('commerce_shipping_by_weight_base_rate', t('Shipping base rate must be a number.'));
+  }
+}
+
+
+
+function commerce_shipping_by_weight_settings_form_submit($form,&$form_state){
+     variable_set('commerce_shipping_by_weight_base_rate', $form_state['values']['commerce_shipping_by_weight_base_rate']);
+    drupal_set_message(t('The Shipping Base Rate configuration options have been saved.'));
+}
+
+
+/**
+ * Implements hook_commerce_shipping_method_info().
+ */
+function commerce_shipping_by_weight_commerce_shipping_method_info() {
+  $shipping_methods = array();
+
+  $shipping_methods['commerce_shipping_by_weight_method'] = array(
+    'title' => t('Commerce Shipping by Weight'),
+    'description' => t('Calucate drupal commerce shipping by order total weight.'),
+  );
+
+  return $shipping_methods;
+}
+
+/**
+ * Implements hook_commerce_shipping_service_info().
+ */
+function commerce_shipping_by_weight_commerce_shipping_service_info() {
+  $shipping_services = array();
+
+  $shipping_services['commerce_shipping_by_weight_service'] = array(
+    'title' => t('Commerce Shipping by Wight'),
+    'description' => t('A flat rate service base on order total weight.'),
+    'display_title' => t('Shipping'),
+    'shipping_method' => 'commerce_shipping_by_weight_method',
+    'price_component' => 'shipping',
+    'callbacks' => array(
+      'rate' => 'commerce_shipping_by_weight_service_rate',
+    ),
+  );
+
+  return $shipping_services;
+}
+
+
+/**
+ * Shipping service callback: returns a base price array for a shipping service
+ * calculated for the given order.
+ */
+function commerce_shipping_by_weight_service_rate($shipping_service, $order) {
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  $weight = commerce_shipping_by_weight_get_order_total_weight($order);
+  return array(
+    'amount' => variable_get('commerce_shipping_by_weight_base_rate') *   $weight * 100,
+    'currency_code' => $order_wrapper->commerce_order_total->currency_code->value(),
+    'data' => array(),
+  );
+}
+
+function commerce_shipping_by_weight_get_order_total_weight($order){
+   $weight = NULL;
+   $lineItemIds = commerce_shipping_by_weight_get_line_item_ids($order->commerce_line_items['und']);
+   $lineItems = commerce_line_item_load_multiple($lineItemIds);
+     foreach ($lineItems as $lineItem) {
+        if ($lineItem->type === 'product') { // ingore shipping line item
+            $lineItemWeight = commerce_shipping_by_weight_get_product_weight($lineItem->commerce_product['und'][0]['product_id']) * $lineItem->quantity;
+          if (empty($weight)) {
+            $weight = $lineItemWeight;
+          }
+          else {
+            $weight += $lineItemWeight;
+          }
+        }
+    }
+  return  ceil($weight);
+}
+
+function  commerce_shipping_by_weight_get_product_weight($productId)
+{
+    if ($product = commerce_product_load($productId)) {
+      return $product->field_weight['und'][0]['weight'];
+    }
+    return 0;
+}
+
+/**
+ * extract line items id into simple array from commerce order object
+ *
+ * @since 20/10/2015
+ * @param array $ids            
+ * @return array $lineItemIds
+ */
+function commerce_shipping_by_weight_get_line_item_ids($ids)
+{
+    $lineItemIds = array();
+    
+    for ($i = 0; $i < count($ids); $i ++) {
+        $lineItemIds[$i] = $ids[$i]['line_item_id'];
+    }
+    
+    return $lineItemIds;
+}
+
+
+/**
+ * Implements hook_commerce_price_component_type_info().
+ */
+function commerce_shipping_by_weight_commerce_price_component_type_info() {
+  return array(
+    'commerce_shipping_by_weight' => array(
+      'title' => t('Shipping'),
+      'weight' => 20,
+    ),
+  );
+}

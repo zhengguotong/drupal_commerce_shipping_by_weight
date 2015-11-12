@@ -1,0 +1,7 @@
+name = Commerce Shiping by Weight
+description = Calucate drupal commerce shipping by order total weight.
+package = Commerce (shipping)
+dependencies[] = commerce
+dependencies[] = commerce_shipping
+dependencies[] = physical
+core = 7.x
